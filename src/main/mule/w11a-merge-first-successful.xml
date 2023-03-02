@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="6be0a1ec-61b5-4809-ad86-b696cbb6cae1" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<db:config name="Database_Config_MySQL" doc:name="Database Config" doc:id="10d7f836-dd12-4b69-9eca-fb818cac1e63" >
+		<db:my-sql-connection host="${mysql.host}" port="${mysql.port}" user="${mysql.user}" password="${mysql.pw}" database="${mysql.db}" />
+	</db:config>
+	<configuration-properties doc:name="Configuration properties" doc:id="fdd19cbf-4083-4a2b-8a7b-efdd036bc4c7" file="config.yaml" />
+	<db:config name="Database_Config-PostgreSQL" doc:name="Database Config" doc:id="0b9cf086-38ca-45cd-b06b-75a9049d26f8" >
+		<db:generic-connection url="${postgresql.url}" driverClassName="${postgresql.driver_name}" user="${postgresql.user}" password="${postgresql.pw}" />
+	</db:config>
+	<flow name="merge-data" doc:id="fa6b604d-9b2b-44a2-969a-49e72cc756ed" >
+		<http:listener doc:name="/GET" doc:id="0d3c9568-2a61-4104-bcad-1818e923be3c" config-ref="HTTP_Listener_config" path="/combine-data/{employeeId}"/>
+		<set-variable value="#[attributes.uriParams.employeeId]" doc:name="ID" doc:id="15ecf40f-a095-4d5d-a1df-3faa0142ca45" variableName="ID"/>
+		<scatter-gather doc:name="Scatter-Gather" doc:id="23b9f1c6-4468-4a8c-aee3-86c8f009d28d" >
+			<route >
+				<db:select doc:name="MySQL" doc:id="ec3d6f38-b1e2-45cb-b62e-ed440f369993" config-ref="Database_Config_MySQL">
+					<db:sql ><![CDATA[SELECT territoryId FROM employeeterritory WHERE employeeId = :employeeId]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{employeeId: vars.ID}]]]></db:input-parameters>
+				</db:select>
+			</route>
+			<route >
+				<db:select doc:name="PostgreSQL" doc:id="d6e6439f-866b-43fb-b71d-83e655e7f6d2" config-ref="Database_Config-PostgreSQL">
+					<db:sql ><![CDATA[SELECT * FROM employee WHERE empid = :empid]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{empid: vars.ID}]]]></db:input-parameters>
+				</db:select>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Merge/JSON" doc:id="82a5f1d2-37f1-4f22-a879-53f63a8c94b4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload."0".payload ++ payload."1".payload
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="first-successful" doc:id="3adb9065-e749-4cdc-a9fc-c42c2e098711" >
+		<http:listener doc:name="/GET" doc:id="bba17d2e-ab01-43a8-ac8d-64e41d6032cf" config-ref="HTTP_Listener_config" path="/get-data/{employeeId}" />
+		<set-variable value="#[attributes.uriParams.employeeId]" doc:name="ID" doc:id="bdaa6776-0a29-464d-979a-cf1192e06b88" variableName="ID" />
+		<scatter-gather doc:name="first-successful" doc:id="e116a92b-42f0-40b2-a448-54d1ca6a59b6" >
+			<route >
+				<db:select doc:name="MySQL" doc:id="12366557-dfda-46ac-83e1-558e342b4e65" config-ref="Database_Config_MySQL">
+					<db:sql><![CDATA[SELECT * FROM employee WHERE employeeId = :employeeId]]></db:sql>
+					<db:input-parameters><![CDATA[#[{employeeId: vars.ID}]]]></db:input-parameters>
+				</db:select>
+				<logger level="INFO" doc:name="Logger" doc:id="83a34acc-6d04-4b39-9b9c-c1b7fc42c779" message="Data from MySQL"/>
+			</route>
+			<route >
+				<db:select doc:name="PostgreSQL" doc:id="4ebda688-3d24-4edc-8e09-582d79c74c43" config-ref="Database_Config-PostgreSQL" >
+					<db:sql ><![CDATA[SELECT * FROM employee WHERE empid = :empid]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{empid: vars.ID}]]]></db:input-parameters>
+				</db:select>
+				<logger level="INFO" doc:name="Logger" doc:id="531f473a-3661-4ec8-94e1-8592a5e940ef" message="Data from PostgreSQL"/>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Merge/JSON" doc:id="677b5180-0963-46da-b78a-caec273648e7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

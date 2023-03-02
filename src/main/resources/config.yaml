@@ -1,0 +1,12 @@
+mysql:
+ host: "localhost"
+ pw: "Yaredom@sql1"
+ user: "root"
+ db: "northwind"
+ port: "3306"
+ 
+postgresql:
+  url: "jdbc:postgresql://localhost:5432/Northwind"
+  pw: "Yaredom@pg1"
+  user: "postgres"
+  driver_name: "org.postgresql.Driver"
